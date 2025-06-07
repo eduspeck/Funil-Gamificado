@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { CheckCircle, Gift, Sparkles, TrendingUp } from "lucide-react"
+import { CheckCircle, Gift, Sparkles, TrendingUp, Check } from "lucide-react"
 import { Notification } from "./components/notification"
 
 interface Question {
@@ -96,6 +96,7 @@ const activityMessages = [
 ]
 
 const MAX_VISIBLE_MESSAGES = 3 // Máximo de mensagens visíveis
+const PRODUCT_PRICE = 127.9 // Preço original do produto
 
 // Lista de possíveis caminhos para o arquivo de áudio
 const AUDIO_PATHS = [
@@ -519,10 +520,23 @@ export default function Component() {
     }).format(value)
   }
 
+  // Calcular preço final com desconto
+  const calculateFinalPrice = () => {
+    const discountedPrice = Math.max(PRODUCT_PRICE - balance, 0)
+    return discountedPrice
+  }
+
   // Auto scroll when messages, typing state, or current step changes
   useEffect(() => {
     scrollToBottom()
   }, [messages, isTyping, currentStep, scrollToBottom])
+
+  // Função para lidar com o clique no botão de compra
+  const handlePurchaseClick = () => {
+    playCashSound() // Tocar som de cash-in ao clicar
+    // Aqui você pode adicionar a lógica para redirecionar para a página de checkout
+    // window.location.href = "https://sua-url-de-checkout.com"
+  }
 
   if (showBonus) {
     return (
@@ -587,6 +601,8 @@ export default function Component() {
   }
 
   if (showFinalOffer) {
+    const finalPrice = calculateFinalPrice()
+
     return (
       <div className="min-h-screen bg-black text-white flex flex-col relative">
         {/* Notifications */}
@@ -616,37 +632,77 @@ export default function Component() {
             animate={{ y: 0, opacity: 1 }}
             className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-lg p-4 md:p-6 border border-[#C6FF00]"
           >
-            <div className="text-center mb-4">
-              <CheckCircle className="w-10 h-10 md:w-12 md:h-12 text-[#C6FF00] mx-auto mb-2" />
-              <h2 className="text-xl md:text-2xl font-bold text-[#C6FF00]">🔓 DESBLOQUEADO!</h2>
+            <div className="text-center mb-6">
+              <motion.div
+                animate={{ scale: [1, 1.1, 1] }}
+                transition={{ duration: 1.5, repeat: Number.POSITIVE_INFINITY, repeatDelay: 3 }}
+              >
+                <CheckCircle className="w-16 h-16 md:w-20 md:h-20 text-[#C6FF00] mx-auto mb-3" />
+              </motion.div>
+              <h2 className="text-2xl md:text-3xl font-bold text-[#C6FF00]">DESBLOQUEADO!</h2>
             </div>
 
-            <div className="bg-black rounded-lg p-4 mb-4">
-              <h3 className="text-lg md:text-xl font-bold mb-2">Guia Renda em 72 Horas</h3>
-              <p className="text-gray-400 line-through">De R$49,90</p>
-              <p className="text-xl md:text-2xl font-bold text-[#00FFB2]">por R$19,90</p>
-              <p className="text-sm text-yellow-400 mt-2">⚡ Desconto especial desbloqueado!</p>
+            <div className="bg-black rounded-lg p-5 mb-6 border border-gray-800">
+              <h3 className="text-xl md:text-2xl font-bold mb-3">Guia Renda em 72 Horas</h3>
+
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
+                <div>
+                  <p className="text-gray-400 line-through text-lg">De {formatCurrency(PRODUCT_PRICE)}</p>
+                  <p className="text-2xl md:text-3xl font-bold text-[#00FFB2]">Por {formatCurrency(finalPrice)}</p>
+                </div>
+                <div className="mt-2 md:mt-0 bg-[#C6FF00]/20 px-3 py-1 rounded-full border border-[#C6FF00]/50">
+                  <p className="text-[#C6FF00] font-bold text-sm md:text-base">Economia de {formatCurrency(balance)}</p>
+                </div>
+              </div>
+
+              <p className="text-gray-300 text-sm md:text-base mb-5">
+                Você acumulou {formatCurrency(balance)} de saldo e garantiu esse desconto especial. Agora é só garantir
+                seu acesso para receber o guia completo + seu bônus exclusivo.
+              </p>
+
+              <div className="space-y-3 mb-5">
+                <div className="flex items-start gap-3">
+                  <div className="bg-[#C6FF00] rounded-full p-1 flex-shrink-0 mt-0.5">
+                    <Check className="w-3 h-3 text-black" />
+                  </div>
+                  <p className="text-white text-sm">Guia prático para fazer sua 1ª venda em até 72 horas</p>
+                </div>
+                <div className="flex items-start gap-3">
+                  <div className="bg-[#C6FF00] rounded-full p-1 flex-shrink-0 mt-0.5">
+                    <Check className="w-3 h-3 text-black" />
+                  </div>
+                  <p className="text-white text-sm">Bônus secreto exclusivo (acesso liberado apenas após a compra)</p>
+                </div>
+              </div>
             </div>
 
-            <Button className="w-full bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] text-black font-bold py-3 rounded-full hover:scale-105 transition-transform mb-4">
-              🚀 Garantir meu acesso agora
-            </Button>
+            <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.98 }}>
+              <Button
+                onClick={handlePurchaseClick}
+                className="w-full bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] text-black font-bold py-4 rounded-full hover:shadow-lg hover:shadow-[#C6FF00]/20 transition-all text-lg"
+              >
+                🚀 Garantir meu acesso agora
+              </Button>
+            </motion.div>
+
+            <div className="mt-4 text-center">
+              <p className="text-gray-400 text-xs">Acesso imediato após a confirmação do pagamento</p>
+            </div>
           </motion.div>
 
           <motion.div
             initial={{ y: 20, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             transition={{ delay: 0.3 }}
-            className="bg-gray-900 rounded-lg p-4 border border-[#00FFB2]"
+            className="bg-gray-900 rounded-lg p-4 border border-gray-700"
           >
-            <p className="text-sm text-gray-400 mb-2">E aqui está seu bônus gratuito, como prometido:</p>
-            <Button
-              variant="outline"
-              size="sm"
-              className="border-[#00FFB2] text-[#00FFB2] hover:bg-[#00FFB2] hover:text-black w-full md:w-auto"
-            >
-              📥 Baixar bônus grátis
-            </Button>
+            <div className="flex items-center gap-3">
+              <Gift className="w-5 h-5 text-[#00FFB2]" />
+              <p className="text-sm text-gray-300">
+                <span className="text-[#00FFB2] font-medium">Lembrete:</span> Seu bônus exclusivo será liberado
+                automaticamente após a finalização da compra.
+              </p>
+            </div>
           </motion.div>
         </div>
       </div>
