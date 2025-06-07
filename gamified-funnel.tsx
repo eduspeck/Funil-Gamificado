@@ -116,7 +116,7 @@ export default function Component() {
   useEffect(() => {
     if (typeof window !== "undefined" && !audioInitializedRef.current) {
       // Create audio element for cash sound
-      cashSoundRef.current = new Audio("/sounds/som-de-notificacao-da-kwify.mp3")
+      cashSoundRef.current = new Audio("/som-de-notificacao-da-kwify.mp3")
       cashSoundRef.current.preload = "auto"
       cashSoundRef.current.volume = 0.7 // Ajuste o volume se necessário
 
@@ -141,6 +141,21 @@ export default function Component() {
 
       document.addEventListener("click", initAudio)
       document.addEventListener("touchstart", initAudio)
+
+      // Test if audio file loads successfully
+      cashSoundRef.current.addEventListener("error", (e) => {
+        console.warn("❌ Erro ao carregar áudio:", e)
+        audioInitializedRef.current = false
+      })
+
+      cashSoundRef.current.addEventListener("canplaythrough", () => {
+        console.log("✅ Áudio carregado com sucesso!")
+        audioInitializedRef.current = true
+      })
+
+      cashSoundRef.current.addEventListener("loadstart", () => {
+        console.log("🔄 Iniciando carregamento do áudio...")
+      })
 
       return () => {
         document.removeEventListener("click", initAudio)
@@ -181,19 +196,32 @@ export default function Component() {
 
   // Play cash sound
   const playCashSound = () => {
-    // Try to play the audio file
-    if (cashSoundRef.current) {
-      // Clone the audio to allow multiple simultaneous plays
-      const audioClone = cashSoundRef.current.cloneNode() as HTMLAudioElement
-      audioClone.currentTime = 0
+    console.log("💰 Tocando som de cash...")
 
-      // Play the sound immediately
-      audioClone.play().catch((error) => {
-        console.log("Audio play failed, falling back to Web Audio API", error)
+    // Try to play the audio file
+    if (cashSoundRef.current && audioInitializedRef.current) {
+      try {
+        // Clone the audio to allow multiple simultaneous plays
+        const audioClone = cashSoundRef.current.cloneNode() as HTMLAudioElement
+        audioClone.currentTime = 0
+        audioClone.volume = 0.7
+
+        // Play the sound immediately
+        audioClone
+          .play()
+          .then(() => {
+            console.log("🎵 Som de cash tocado com sucesso!")
+          })
+          .catch((error) => {
+            console.log("⚠️ Erro ao tocar áudio, usando fallback:", error)
+            playFallbackCashSound()
+          })
+      } catch (error) {
+        console.log("⚠️ Erro ao clonar áudio, usando fallback:", error)
         playFallbackCashSound()
-      })
+      }
     } else {
-      // Fallback to Web Audio API
+      console.log("🔄 Áudio não inicializado, usando fallback")
       playFallbackCashSound()
     }
   }
@@ -269,7 +297,13 @@ export default function Component() {
     const newNotification = { ...notification, id }
 
     setNotifications((prev) => [...prev, newNotification])
-    playNotificationSound()
+
+    // Play cash sound for social proof (sales) and personal notifications
+    if (notification.type === "social" || notification.type === "personal") {
+      playCashSound() // Play cash sound for money-related notifications
+    } else {
+      playNotificationSound() // Play regular notification sound for other types
+    }
 
     // Auto remove after 4 seconds
     setTimeout(() => {
