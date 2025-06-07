@@ -97,6 +97,14 @@ const activityMessages = [
 
 const MAX_VISIBLE_MESSAGES = 3 // Máximo de mensagens visíveis
 
+// Lista de possíveis caminhos para o arquivo de áudio
+const AUDIO_PATHS = [
+  "/som-de-notificacao-da-kwify.mp3",
+  "/sounds/som-de-notificacao-da-kwify.mp3",
+  "som-de-notificacao-da-kwify.mp3",
+  "https://raw.githubusercontent.com/eduspeck/Funil-Gamificado/main/som-de-notificacao-da-kwify.mp3",
+]
+
 export default function Component() {
   const [currentStep, setCurrentStep] = useState(0)
   const [balance, setBalance] = useState(0)
@@ -111,29 +119,108 @@ export default function Component() {
   const chatContainerRef = useRef<HTMLDivElement | null>(null)
   const cashSoundRef = useRef<HTMLAudioElement | null>(null)
   const audioInitializedRef = useRef<boolean>(false)
+  const [workingAudioPath, setWorkingAudioPath] = useState<string | null>(null)
+
+  // Função para testar os caminhos de áudio e encontrar um que funcione
+  const testAudioPaths = useCallback(async () => {
+    if (typeof window === "undefined") return
+
+    // Criar um elemento de áudio para teste
+    const testAudio = new Audio()
+
+    // Função para testar um caminho específico
+    const testPath = (path: string): Promise<boolean> => {
+      return new Promise((resolve) => {
+        testAudio.src = path
+
+        const successHandler = () => {
+          console.log(`✅ Caminho de áudio funcionando: ${path}`)
+          resolve(true)
+          testAudio.removeEventListener("canplaythrough", successHandler)
+          testAudio.removeEventListener("error", errorHandler)
+        }
+
+        const errorHandler = () => {
+          console.log(`❌ Caminho de áudio falhou: ${path}`)
+          resolve(false)
+          testAudio.removeEventListener("canplaythrough", successHandler)
+          testAudio.removeEventListener("error", errorHandler)
+        }
+
+        testAudio.addEventListener("canplaythrough", successHandler)
+        testAudio.addEventListener("error", errorHandler)
+
+        // Definir um timeout para caso o evento nunca dispare
+        setTimeout(() => {
+          errorHandler()
+        }, 2000)
+
+        // Tentar carregar o áudio
+        testAudio.load()
+      })
+    }
+
+    // Testar cada caminho até encontrar um que funcione
+    for (const path of AUDIO_PATHS) {
+      const success = await testPath(path)
+      if (success) {
+        setWorkingAudioPath(path)
+        return path
+      }
+    }
+
+    // Se nenhum caminho funcionar, usar o fallback
+    console.log("⚠️ Nenhum caminho de áudio funcionou, usando fallback")
+    return null
+  }, [])
 
   // Initialize audio
   useEffect(() => {
     if (typeof window !== "undefined" && !audioInitializedRef.current) {
-      // Create audio element for cash sound
-      cashSoundRef.current = new Audio("/som-de-notificacao-da-kwify.mp3")
-      cashSoundRef.current.preload = "auto"
-      cashSoundRef.current.volume = 0.7 // Ajuste o volume se necessário
+      // Testar os caminhos de áudio
+      testAudioPaths().then((workingPath) => {
+        if (workingPath) {
+          // Create audio element for cash sound
+          cashSoundRef.current = new Audio(workingPath)
+          cashSoundRef.current.preload = "auto"
+          cashSoundRef.current.volume = 0.7 // Ajuste o volume se necessário
+
+          console.log(`🎵 Áudio inicializado com caminho: ${workingPath}`)
+        }
+      })
 
       // For Web Audio API fallback
-      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+      try {
+        audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)()
+      } catch (error) {
+        console.error("Erro ao criar contexto de áudio:", error)
+      }
 
       // Initialize audio on first user interaction
       const initAudio = () => {
         if (!audioInitializedRef.current) {
-          // Play and immediately pause to enable audio on iOS
-          cashSoundRef.current?.play().catch(() => {})
-          cashSoundRef.current?.pause()
-          cashSoundRef.current!.currentTime = 0
+          // Se temos um elemento de áudio, tente inicializá-lo
+          if (cashSoundRef.current) {
+            // Play and immediately pause to enable audio on iOS
+            cashSoundRef.current
+              .play()
+              .then(() => {
+                cashSoundRef.current!.pause()
+                cashSoundRef.current!.currentTime = 0
+                audioInitializedRef.current = true
+                console.log("✅ Áudio inicializado com sucesso!")
+              })
+              .catch((error) => {
+                console.log("⚠️ Erro ao inicializar áudio:", error)
+                // Mesmo com erro, marcar como inicializado para evitar tentativas repetidas
+                audioInitializedRef.current = true
+              })
+          } else {
+            // Se não temos um elemento de áudio, marcar como inicializado para usar o fallback
+            audioInitializedRef.current = true
+          }
 
-          audioInitializedRef.current = true
-
-          // Remove event listeners after initialization
+          // Remove event listeners after initialization attempt
           document.removeEventListener("click", initAudio)
           document.removeEventListener("touchstart", initAudio)
         }
@@ -142,27 +229,12 @@ export default function Component() {
       document.addEventListener("click", initAudio)
       document.addEventListener("touchstart", initAudio)
 
-      // Test if audio file loads successfully
-      cashSoundRef.current.addEventListener("error", (e) => {
-        console.warn("❌ Erro ao carregar áudio:", e)
-        audioInitializedRef.current = false
-      })
-
-      cashSoundRef.current.addEventListener("canplaythrough", () => {
-        console.log("✅ Áudio carregado com sucesso!")
-        audioInitializedRef.current = true
-      })
-
-      cashSoundRef.current.addEventListener("loadstart", () => {
-        console.log("🔄 Iniciando carregamento do áudio...")
-      })
-
       return () => {
         document.removeEventListener("click", initAudio)
         document.removeEventListener("touchstart", initAudio)
       }
     }
-  }, [])
+  }, [testAudioPaths])
 
   // Start social proof notifications
   useEffect(() => {
@@ -194,11 +266,11 @@ export default function Component() {
     }
   }, [])
 
-  // Play cash sound
+  // Play cash sound - versão robusta com múltiplas tentativas
   const playCashSound = () => {
-    console.log("💰 Tocando som de cash...")
+    console.log("💰 Tentando tocar som de cash...")
 
-    // Try to play the audio file
+    // Try to play the audio file if we have a working path
     if (cashSoundRef.current && audioInitializedRef.current) {
       try {
         // Clone the audio to allow multiple simultaneous plays
@@ -230,58 +302,85 @@ export default function Component() {
   const playFallbackCashSound = () => {
     if (!audioContextRef.current) return
 
-    const oscillator = audioContextRef.current.createOscillator()
-    const gainNode = audioContextRef.current.createGain()
+    try {
+      // Verificar se o contexto está suspenso e tentar retomá-lo
+      if (audioContextRef.current.state === "suspended") {
+        audioContextRef.current.resume().catch(console.error)
+      }
 
-    oscillator.connect(gainNode)
-    gainNode.connect(audioContextRef.current.destination)
+      const oscillator = audioContextRef.current.createOscillator()
+      const gainNode = audioContextRef.current.createGain()
 
-    oscillator.frequency.setValueAtTime(800, audioContextRef.current.currentTime)
-    oscillator.frequency.exponentialRampToValueAtTime(400, audioContextRef.current.currentTime + 0.1)
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContextRef.current.destination)
 
-    gainNode.gain.setValueAtTime(0.3, audioContextRef.current.currentTime)
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.3)
+      oscillator.frequency.setValueAtTime(800, audioContextRef.current.currentTime)
+      oscillator.frequency.exponentialRampToValueAtTime(400, audioContextRef.current.currentTime + 0.1)
 
-    oscillator.start(audioContextRef.current.currentTime)
-    oscillator.stop(audioContextRef.current.currentTime + 0.3)
+      gainNode.gain.setValueAtTime(0.3, audioContextRef.current.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.3)
+
+      oscillator.start(audioContextRef.current.currentTime)
+      oscillator.stop(audioContextRef.current.currentTime + 0.3)
+    } catch (error) {
+      console.error("Erro ao tocar som fallback:", error)
+    }
   }
 
   // Play click sound
   const playClickSound = () => {
     if (!audioContextRef.current) return
 
-    const oscillator = audioContextRef.current.createOscillator()
-    const gainNode = audioContextRef.current.createGain()
+    try {
+      // Verificar se o contexto está suspenso e tentar retomá-lo
+      if (audioContextRef.current.state === "suspended") {
+        audioContextRef.current.resume().catch(console.error)
+      }
 
-    oscillator.connect(gainNode)
-    gainNode.connect(audioContextRef.current.destination)
+      const oscillator = audioContextRef.current.createOscillator()
+      const gainNode = audioContextRef.current.createGain()
 
-    oscillator.frequency.setValueAtTime(1000, audioContextRef.current.currentTime)
-    gainNode.gain.setValueAtTime(0.1, audioContextRef.current.currentTime)
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.1)
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContextRef.current.destination)
 
-    oscillator.start(audioContextRef.current.currentTime)
-    oscillator.stop(audioContextRef.current.currentTime + 0.1)
+      oscillator.frequency.setValueAtTime(1000, audioContextRef.current.currentTime)
+      gainNode.gain.setValueAtTime(0.1, audioContextRef.current.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.1)
+
+      oscillator.start(audioContextRef.current.currentTime)
+      oscillator.stop(audioContextRef.current.currentTime + 0.1)
+    } catch (error) {
+      console.error("Erro ao tocar som de clique:", error)
+    }
   }
 
   // Play notification sound
   const playNotificationSound = () => {
     if (!audioContextRef.current) return
 
-    const oscillator = audioContextRef.current.createOscillator()
-    const gainNode = audioContextRef.current.createGain()
+    try {
+      // Verificar se o contexto está suspenso e tentar retomá-lo
+      if (audioContextRef.current.state === "suspended") {
+        audioContextRef.current.resume().catch(console.error)
+      }
 
-    oscillator.connect(gainNode)
-    gainNode.connect(audioContextRef.current.destination)
+      const oscillator = audioContextRef.current.createOscillator()
+      const gainNode = audioContextRef.current.createGain()
 
-    oscillator.frequency.setValueAtTime(600, audioContextRef.current.currentTime)
-    oscillator.frequency.setValueAtTime(800, audioContextRef.current.currentTime + 0.1)
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContextRef.current.destination)
 
-    gainNode.gain.setValueAtTime(0.2, audioContextRef.current.currentTime)
-    gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.2)
+      oscillator.frequency.setValueAtTime(600, audioContextRef.current.currentTime)
+      oscillator.frequency.setValueAtTime(800, audioContextRef.current.currentTime + 0.1)
 
-    oscillator.start(audioContextRef.current.currentTime)
-    oscillator.stop(audioContextRef.current.currentTime + 0.2)
+      gainNode.gain.setValueAtTime(0.2, audioContextRef.current.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.2)
+
+      oscillator.start(audioContextRef.current.currentTime)
+      oscillator.stop(audioContextRef.current.currentTime + 0.2)
+    } catch (error) {
+      console.error("Erro ao tocar som de notificação:", error)
+    }
   }
 
   // Scroll to bottom of chat
@@ -586,7 +685,7 @@ export default function Component() {
       </div>
 
       {/* Chat Area */}
-      <div className="flex-1 p-3 md:p-4 space-y-4 overflow-hidden">
+      <div className="flex-1 p-3 md:p-4 space-y-4 overflow-hidden" ref={chatContainerRef}>
         {/* Welcome message - only show if no messages yet */}
         {messages.length === 0 && (
           <motion.div
@@ -706,6 +805,30 @@ export default function Component() {
           </motion.div>
         )}
       </div>
+
+      {/* Botão invisível para inicializar áudio */}
+      <button
+        onClick={() => {
+          if (cashSoundRef.current) {
+            cashSoundRef.current
+              .play()
+              .then(() => {
+                cashSoundRef.current!.pause()
+                cashSoundRef.current!.currentTime = 0
+                audioInitializedRef.current = true
+                console.log("✅ Áudio inicializado manualmente!")
+              })
+              .catch(console.error)
+          }
+
+          // Também tenta retomar o contexto de áudio
+          if (audioContextRef.current && audioContextRef.current.state === "suspended") {
+            audioContextRef.current.resume().catch(console.error)
+          }
+        }}
+        className="opacity-0 absolute top-0 left-0 w-full h-full cursor-default"
+        aria-hidden="true"
+      />
     </div>
   )
 }
