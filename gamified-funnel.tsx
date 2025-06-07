@@ -196,33 +196,31 @@ export default function Component() {
         console.error("Erro ao criar contexto de áudio:", error)
       }
 
-      // Initialize audio on first user interaction
+      // Initialize audio on first user interaction - versão menos intrusiva
       const initAudio = () => {
         if (!audioInitializedRef.current) {
           // Se temos um elemento de áudio, tente inicializá-lo
           if (cashSoundRef.current) {
             // Play and immediately pause to enable audio on iOS
-            cashSoundRef.current
-              .play()
-              .then(() => {
-                cashSoundRef.current!.pause()
-                cashSoundRef.current!.currentTime = 0
-                audioInitializedRef.current = true
-                console.log("✅ Áudio inicializado com sucesso!")
-              })
-              .catch((error) => {
-                console.log("⚠️ Erro ao inicializar áudio:", error)
-                // Mesmo com erro, marcar como inicializado para evitar tentativas repetidas
-                audioInitializedRef.current = true
-              })
+            const playPromise = cashSoundRef.current.play()
+
+            if (playPromise !== undefined) {
+              playPromise
+                .then(() => {
+                  cashSoundRef.current!.pause()
+                  cashSoundRef.current!.currentTime = 0
+                  audioInitializedRef.current = true
+                  console.log("✅ Áudio inicializado com sucesso!")
+                })
+                .catch((error) => {
+                  console.log("⚠️ Erro ao inicializar áudio:", error)
+                  // Não marcar como inicializado para permitir novas tentativas
+                })
+            }
           } else {
             // Se não temos um elemento de áudio, marcar como inicializado para usar o fallback
             audioInitializedRef.current = true
           }
-
-          // Remove event listeners after initialization attempt
-          document.removeEventListener("click", initAudio)
-          document.removeEventListener("touchstart", initAudio)
         }
       }
 
@@ -806,10 +804,10 @@ export default function Component() {
         )}
       </div>
 
-      {/* Botão invisível para inicializar áudio */}
-      <button
+      {/* Elemento para inicializar áudio sem bloquear cliques */}
+      <div
         onClick={() => {
-          if (cashSoundRef.current) {
+          if (cashSoundRef.current && !audioInitializedRef.current) {
             cashSoundRef.current
               .play()
               .then(() => {
@@ -826,7 +824,7 @@ export default function Component() {
             audioContextRef.current.resume().catch(console.error)
           }
         }}
-        className="opacity-0 absolute top-0 left-0 w-full h-full cursor-default"
+        className="fixed top-0 left-0 w-1 h-1 opacity-0 pointer-events-none"
         aria-hidden="true"
       />
     </div>
