@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { Button } from "@/components/ui/button"
 import { Progress } from "@/components/ui/progress"
-import { CheckCircle, Gift, Sparkles, TrendingUp, Check } from "lucide-react"
+import { CheckCircle, Gift, Sparkles, TrendingUp, Check, Star } from "lucide-react"
 import { Notification } from "./components/notification"
 
 interface Question {
@@ -96,7 +96,7 @@ const activityMessages = [
 ]
 
 const MAX_VISIBLE_MESSAGES = 3 // Máximo de mensagens visíveis
-const PRODUCT_PRICE = 127.9 // Preço original do produto
+const PRODUCT_PRICE = 297.8 // Preço original do produto
 
 // Lista de possíveis caminhos para o arquivo de áudio
 const AUDIO_PATHS = [
@@ -106,6 +106,9 @@ const AUDIO_PATHS = [
   "https://raw.githubusercontent.com/eduspeck/Funil-Gamificado/main/som-de-notificacao-da-kwify.mp3",
 ]
 
+// Valores da roleta
+const ROULETTE_VALUES = [5, 20, 50, 150, 75, 20, 5, 150, 75, 50, 20, 5]
+
 export default function Component() {
   const [currentStep, setCurrentStep] = useState(0)
   const [balance, setBalance] = useState(0)
@@ -113,6 +116,11 @@ export default function Component() {
   const [isTyping, setIsTyping] = useState(false)
   const [showBonus, setShowBonus] = useState(false)
   const [showFinalOffer, setShowFinalOffer] = useState(false)
+  const [showProductReview, setShowProductReview] = useState(false)
+  const [showRoulette, setShowRoulette] = useState(false)
+  const [rouletteSpinning, setRouletteSpinning] = useState(false)
+  const [rouletteResult, setRouletteResult] = useState<number | null>(null)
+  const [showConfetti, setShowConfetti] = useState(false)
   const [messages, setMessages] = useState<Array<{ type: "bot" | "user"; text: string; id: number }>>([])
   const [notifications, setNotifications] = useState<NotificationData[]>([])
   const audioContextRef = useRef<AudioContext | null>(null)
@@ -121,6 +129,8 @@ export default function Component() {
   const cashSoundRef = useRef<HTMLAudioElement | null>(null)
   const audioInitializedRef = useRef<boolean>(false)
   const [workingAudioPath, setWorkingAudioPath] = useState<string | null>(null)
+  const [showIntro, setShowIntro] = useState(true)
+  const [showHowItWorks, setShowHowItWorks] = useState(false)
 
   // Função para testar os caminhos de áudio e encontrar um que funcione
   const testAudioPaths = useCallback(async () => {
@@ -326,6 +336,46 @@ export default function Component() {
     }
   }
 
+  // Play reward sound (for big wins)
+  const playRewardSound = () => {
+    if (!audioContextRef.current) return
+
+    try {
+      if (audioContextRef.current.state === "suspended") {
+        audioContextRef.current.resume().catch(console.error)
+      }
+
+      // Create a more elaborate reward sound
+      const oscillator1 = audioContextRef.current.createOscillator()
+      const oscillator2 = audioContextRef.current.createOscillator()
+      const gainNode = audioContextRef.current.createGain()
+
+      oscillator1.connect(gainNode)
+      oscillator2.connect(gainNode)
+      gainNode.connect(audioContextRef.current.destination)
+
+      // First tone
+      oscillator1.frequency.setValueAtTime(523, audioContextRef.current.currentTime) // C5
+      oscillator1.frequency.setValueAtTime(659, audioContextRef.current.currentTime + 0.1) // E5
+      oscillator1.frequency.setValueAtTime(784, audioContextRef.current.currentTime + 0.2) // G5
+
+      // Second tone (harmony)
+      oscillator2.frequency.setValueAtTime(659, audioContextRef.current.currentTime) // E5
+      oscillator2.frequency.setValueAtTime(784, audioContextRef.current.currentTime + 0.1) // G5
+      oscillator2.frequency.setValueAtTime(1047, audioContextRef.current.currentTime + 0.2) // C6
+
+      gainNode.gain.setValueAtTime(0.4, audioContextRef.current.currentTime)
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContextRef.current.currentTime + 0.5)
+
+      oscillator1.start(audioContextRef.current.currentTime)
+      oscillator1.stop(audioContextRef.current.currentTime + 0.5)
+      oscillator2.start(audioContextRef.current.currentTime)
+      oscillator2.stop(audioContextRef.current.currentTime + 0.5)
+    } catch (error) {
+      console.error("Erro ao tocar som de recompensa:", error)
+    }
+  }
+
   // Play click sound
   const playClickSound = () => {
     if (!audioContextRef.current) return
@@ -382,6 +432,25 @@ export default function Component() {
     }
   }
 
+  // Handle intro screen
+  const handleStartChallenge = () => {
+    playClickSound()
+    setShowIntro(false)
+    setShowHowItWorks(true)
+  }
+
+  // Handle how it works screen
+  const handleStartNow = () => {
+    playClickSound()
+    setShowHowItWorks(false)
+  }
+
+  // Show confetti effect
+  const showConfettiEffect = () => {
+    setShowConfetti(true)
+    setTimeout(() => setShowConfetti(false), 3000)
+  }
+
   // Scroll to bottom of chat
   const scrollToBottom = useCallback(() => {
     if (chatContainerRef.current) {
@@ -426,6 +495,91 @@ export default function Component() {
     })
   }, [])
 
+  // Handle product review
+  const handleProductReview = () => {
+    playClickSound()
+
+    // Add bonus to balance
+    const bonusAmount = 19.9
+    setBalance((prev) => prev + bonusAmount)
+    setProgress((prev) => prev + 15) // Extra progress for review
+
+    // Show confetti and play reward sound
+    showConfettiEffect()
+    playRewardSound()
+
+    // Show notification
+    showNotification({
+      type: "bonus",
+      message: `🎉 Bônus de avaliação! +R$${bonusAmount.toFixed(2)} adicionados!`,
+      position: "bottom",
+    })
+
+    // Hide review screen and continue
+    setShowProductReview(false)
+    setIsTyping(true)
+
+    setTimeout(() => {
+      setIsTyping(false)
+      setCurrentStep(3) // Continue to next question
+
+      const botMessage = {
+        type: "bot" as const,
+        text: "Obrigado pela avaliação! Bônus especial desbloqueado. Vamos continuar:",
+        id: Date.now(),
+      }
+      addMessage(botMessage)
+    }, 2000)
+  }
+
+  // Handle roulette spin
+  const handleRouletteSpin = () => {
+    if (rouletteSpinning) return
+
+    playClickSound()
+    setRouletteSpinning(true)
+    setRouletteResult(null)
+
+    // Simulate spinning for 3 seconds, then land on 150
+    setTimeout(() => {
+      setRouletteResult(150)
+      setRouletteSpinning(false)
+
+      // Add bonus to balance
+      setBalance((prev) => prev + 150)
+      setProgress((prev) => prev + 20) // Extra progress for roulette
+
+      // Show confetti and play reward sound
+      showConfettiEffect()
+      playRewardSound()
+
+      // Show notification
+      showNotification({
+        type: "bonus",
+        message: "🎰 JACKPOT! Você ganhou R$150,00 na roleta!",
+        position: "bottom",
+      })
+
+      // Continue after showing result
+      setTimeout(() => {
+        setShowRoulette(false)
+        setIsTyping(true)
+
+        setTimeout(() => {
+          setIsTyping(false)
+          setCurrentStep(7) // Continue to next question
+
+          const botMessage = {
+            type: "bot" as const,
+            text: "Que sorte incrível! R$150,00 na roleta! Vamos continuar:",
+            id: Date.now(),
+          }
+          addMessage(botMessage)
+        }, 1500)
+      }, 3000)
+    }, 3000)
+  }
+
   // Handle answer selection
   const handleAnswer = (answer: string) => {
     playClickSound()
@@ -462,6 +616,18 @@ export default function Component() {
 
     setTimeout(() => {
       setIsTyping(false)
+
+      // Special handling for step 2 (show product review)
+      if (currentStep === 2) {
+        setShowProductReview(true)
+        return
+      }
+
+      // Special handling for step 6 (show roulette)
+      if (currentStep === 6) {
+        setShowRoulette(true)
+        return
+      }
 
       // Check for bonus unlock (after 5th question)
       if (currentStep === 4) {
@@ -536,6 +702,440 @@ export default function Component() {
     playCashSound() // Tocar som de cash-in ao clicar
     // Aqui você pode adicionar a lógica para redirecionar para a página de checkout
     // window.location.href = "https://sua-url-de-checkout.com"
+  }
+
+  // Intro Screen
+  if (showIntro) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col relative">
+        {/* Notifications */}
+        <AnimatePresence>
+          {notifications.map((notification) => (
+            <Notification key={notification.id} {...notification} onClose={() => removeNotification(notification.id)} />
+          ))}
+        </AnimatePresence>
+
+        {/* Header */}
+        <div className="bg-gray-900 p-3 md:p-4 flex justify-center items-center border-b border-gray-800">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-[#C6FF00]" />
+            <span className="font-bold text-lg">Desafio Interativo</span>
+          </div>
+        </div>
+
+        {/* Intro Content */}
+        <div className="flex-1 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="text-center max-w-2xl w-full"
+          >
+            <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl p-6 md:p-8 border border-[#C6FF00] shadow-2xl">
+              <motion.div
+                animate={{ scale: [1, 1.05, 1] }}
+                transition={{ duration: 2, repeat: Number.POSITIVE_INFINITY, repeatDelay: 3 }}
+                className="mb-6"
+              >
+                <div className="w-20 h-20 mx-auto bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] rounded-full flex items-center justify-center mb-4">
+                  <Sparkles className="w-10 h-10 text-black" />
+                </div>
+              </motion.div>
+
+              <h1 className="text-2xl md:text-4xl font-bold mb-6 text-white leading-tight">
+                Descubra como transformar seu tempo livre em <span className="text-[#C6FF00]">ganhos reais</span> com um
+                simples <span className="text-[#00FFB2]">desafio interativo</span>
+              </h1>
+
+              <p className="text-gray-300 text-lg md:text-xl mb-8 leading-relaxed">
+                Responda perguntas, avalie produtos, gire a roleta e acumule recompensas que desbloqueiam um{" "}
+                <span className="text-[#C6FF00] font-semibold">guia prático completo</span> para sua primeira renda
+                online — com <span className="text-[#00FFB2] font-semibold">bônus secreto incluído!</span>
+              </p>
+
+              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                <Button
+                  onClick={handleStartChallenge}
+                  className="bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] text-black font-bold py-4 px-8 rounded-full text-xl hover:shadow-lg hover:shadow-[#C6FF00]/20 transition-all"
+                >
+                  <Gift className="w-6 h-6 mr-3" />
+                  Começar Desafio
+                </Button>
+              </motion.div>
+
+              <div className="mt-6 text-gray-400 text-sm">
+                <p>✨ Totalmente gratuito • ⏱️ Leva apenas 5 minutos • 🎁 Recompensas garantidas</p>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    )
+  }
+
+  // How It Works Screen
+  if (showHowItWorks) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col relative">
+        {/* Notifications */}
+        <AnimatePresence>
+          {notifications.map((notification) => (
+            <Notification key={notification.id} {...notification} onClose={() => removeNotification(notification.id)} />
+          ))}
+        </AnimatePresence>
+
+        {/* Header */}
+        <div className="bg-gray-900 p-3 md:p-4 flex justify-center items-center border-b border-gray-800">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-5 h-5 text-[#C6FF00]" />
+            <span className="font-bold text-lg">Como Funciona</span>
+          </div>
+        </div>
+
+        {/* How It Works Content */}
+        <div className="flex-1 p-4 max-w-4xl mx-auto w-full">
+          <motion.div initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="text-center mb-8">
+            <h1 className="text-3xl md:text-4xl font-bold mb-4 text-white">
+              Como Funciona o <span className="text-[#C6FF00]">Desafio?</span>
+            </h1>
+          </motion.div>
+
+          <div className="grid gap-6 md:gap-8 mb-8">
+            {/* Step 1 */}
+            <motion.div
+              initial={{ x: -50, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.1 }}
+              className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl p-6 border border-gray-700 hover:border-[#C6FF00]/50 transition-all"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-black font-bold text-xl">💰</span>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-[#C6FF00] mb-2">1. Acumule Ganhos</h3>
+                  <p className="text-gray-300">
+                    A cada pergunta respondida, você ganha <span className="text-[#C6FF00] font-semibold">R$10,00</span>{" "}
+                    direto no seu painel. Mostre seu interesse e veja seu saldo crescer.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Step 2 */}
+            <motion.div
+              initial={{ x: -50, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.2 }}
+              className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl p-6 border border-gray-700 hover:border-[#C6FF00]/50 transition-all"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] rounded-full flex items-center justify-center flex-shrink-0">
+                  <Star className="w-6 h-6 text-black" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-[#C6FF00] mb-2">2. Avalie Produtos</h3>
+                  <p className="text-gray-300">
+                    Na etapa 3 você terá a chance de avaliar um produto e ganhar{" "}
+                    <span className="text-[#C6FF00] font-semibold">R$19,90</span> a mais com apenas 1 clique.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Step 3 */}
+            <motion.div
+              initial={{ x: -50, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl p-6 border border-gray-700 hover:border-[#C6FF00]/50 transition-all"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-black font-bold text-xl">🎰</span>
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-[#C6FF00] mb-2">3. Gire a Roleta</h3>
+                  <p className="text-gray-300">
+                    Na etapa 7, desbloqueie a Roleta Premiada. Gire e receba até{" "}
+                    <span className="text-[#C6FF00] font-semibold">R$150,00</span> em bônus imediato. É diversão com
+                    recompensa real.
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Step 4 */}
+            <motion.div
+              initial={{ x: -50, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ delay: 0.4 }}
+              className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl p-6 border border-gray-700 hover:border-[#C6FF00]/50 transition-all"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] rounded-full flex items-center justify-center flex-shrink-0">
+                  <Gift className="w-6 h-6 text-black" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-[#C6FF00] mb-2">4. Ganhe o Bônus Secreto</h3>
+                  <p className="text-gray-300">
+                    Só quem conclui o desafio garante o{" "}
+                    <span className="text-[#C6FF00] font-semibold">Guia da Renda em 72 Horas</span> + um{" "}
+                    <span className="text-[#00FFB2] font-semibold">bônus surpresa gratuito!</span>
+                  </p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+
+          <motion.div
+            initial={{ y: 20, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="text-center"
+          >
+            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+              <Button
+                onClick={handleStartNow}
+                className="bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] text-black font-bold py-4 px-8 rounded-full text-xl hover:shadow-lg hover:shadow-[#C6FF00]/20 transition-all mb-4"
+              >
+                <Sparkles className="w-6 h-6 mr-3" />
+                Começar Agora
+              </Button>
+            </motion.div>
+
+            <p className="text-gray-400 text-sm">
+              <span className="text-[#00FFB2] font-semibold">347 pessoas</span> já participaram hoje
+            </p>
+          </motion.div>
+        </div>
+      </div>
+    )
+  }
+
+  // Product Review Screen
+  if (showProductReview) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col relative">
+        {/* Confetti Effect */}
+        {showConfetti && (
+          <div className="fixed inset-0 pointer-events-none z-50">
+            {[...Array(50)].map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute w-2 h-2 bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] rounded-full"
+                initial={{
+                  x: Math.random() * window.innerWidth,
+                  y: -10,
+                  rotate: 0,
+                }}
+                animate={{
+                  y: window.innerHeight + 10,
+                  rotate: 360,
+                }}
+                transition={{
+                  duration: 3,
+                  delay: Math.random() * 2,
+                  ease: "easeOut",
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Notifications */}
+        <AnimatePresence>
+          {notifications.map((notification) => (
+            <Notification key={notification.id} {...notification} onClose={() => removeNotification(notification.id)} />
+          ))}
+        </AnimatePresence>
+
+        {/* Header */}
+        <div className="bg-gray-900 p-3 md:p-4 flex justify-between items-center border-b border-gray-800">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-[#C6FF00]" />
+            <span className="font-bold text-sm md:text-base">Saldo: {formatCurrency(balance)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs md:text-sm">Avaliação</span>
+            <Progress value={progress} className="w-16 md:w-20 h-2" />
+            <span className="text-xs md:text-sm text-[#00FFB2]">{progress}%</span>
+          </div>
+        </div>
+
+        {/* Product Review */}
+        <div className="flex-1 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="text-center max-w-md w-full"
+          >
+            <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl p-6 border border-[#C6FF00]">
+              <h2 className="text-xl md:text-2xl font-bold mb-4 text-[#C6FF00]">🎁 Avaliação Surpresa!</h2>
+
+              <p className="text-gray-300 mb-6">Avalie este produto e ganhe um bônus especial de R$19,90!</p>
+
+              {/* Product Image */}
+              <div className="mb-6">
+                <div className="w-48 h-48 mx-auto rounded-lg overflow-hidden border border-[#C6FF00]/50">
+                  <img
+                    src="/images/kit-malbec.png"
+                    alt="Kit Masculino Malbec (4 itens) - Boticário"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <h3 className="text-lg font-bold mt-3">Kit Masculino Malbec (4 itens)</h3>
+                <p className="text-gray-400 text-sm">Boticário - Linha Premium</p>
+              </div>
+
+              {/* Star Rating */}
+              <div className="flex justify-center gap-1 mb-6">
+                {[...Array(5)].map((_, i) => (
+                  <Star
+                    key={i}
+                    className="w-8 h-8 text-[#C6FF00] fill-current cursor-pointer hover:scale-110 transition-transform"
+                  />
+                ))}
+              </div>
+
+              <Button
+                onClick={handleProductReview}
+                className="bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] text-black font-bold py-3 px-8 rounded-full hover:scale-105 transition-transform w-full"
+              >
+                <Sparkles className="w-5 h-5 mr-2" />
+                Confirmar Avaliação (+R$19,90)
+              </Button>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    )
+  }
+
+  // Roulette Screen
+  if (showRoulette) {
+    return (
+      <div className="min-h-screen bg-black text-white flex flex-col relative">
+        {/* Confetti Effect */}
+        {showConfetti && (
+          <div className="fixed inset-0 pointer-events-none z-50">
+            {[...Array(50)].map((_, i) => (
+              <motion.div
+                key={i}
+                className="absolute w-2 h-2 bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] rounded-full"
+                initial={{
+                  x: Math.random() * window.innerWidth,
+                  y: -10,
+                  rotate: 0,
+                }}
+                animate={{
+                  y: window.innerHeight + 10,
+                  rotate: 360,
+                }}
+                transition={{
+                  duration: 3,
+                  delay: Math.random() * 2,
+                  ease: "easeOut",
+                }}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Notifications */}
+        <AnimatePresence>
+          {notifications.map((notification) => (
+            <Notification key={notification.id} {...notification} onClose={() => removeNotification(notification.id)} />
+          ))}
+        </AnimatePresence>
+
+        {/* Header */}
+        <div className="bg-gray-900 p-3 md:p-4 flex justify-between items-center border-b border-gray-800">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-[#C6FF00]" />
+            <span className="font-bold text-sm md:text-base">Saldo: {formatCurrency(balance)}</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs md:text-sm">Roleta</span>
+            <Progress value={progress} className="w-16 md:w-20 h-2" />
+            <span className="text-xs md:text-sm text-[#00FFB2]">{progress}%</span>
+          </div>
+        </div>
+
+        {/* Roulette */}
+        <div className="flex-1 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ scale: 0.8, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="text-center max-w-md w-full"
+          >
+            <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-xl p-6 border border-[#C6FF00]">
+              <h2 className="text-xl md:text-2xl font-bold mb-4 text-[#C6FF00]">🎰 Roleta da Sorte!</h2>
+
+              <p className="text-gray-300 mb-6">Gire a roleta e ganhe um bônus especial!</p>
+
+              {/* Roulette Wheel */}
+              <div className="relative w-64 h-64 mx-auto mb-6">
+                <motion.div
+                  className="w-full h-full rounded-full border-8 border-[#C6FF00] relative overflow-hidden"
+                  animate={rouletteSpinning ? { rotate: 1800 } : {}}
+                  transition={{ duration: 3, ease: "easeOut" }}
+                >
+                  {ROULETTE_VALUES.map((value, index) => (
+                    <div
+                      key={index}
+                      className={`absolute w-full h-full ${index % 2 === 0 ? "bg-gray-800" : "bg-gray-700"}`}
+                      style={{
+                        transform: `rotate(${(360 / ROULETTE_VALUES.length) * index}deg)`,
+                        clipPath: `polygon(50% 50%, 50% 0%, ${50 + 50 * Math.cos((2 * Math.PI) / ROULETTE_VALUES.length)}% ${50 - 50 * Math.sin((2 * Math.PI) / ROULETTE_VALUES.length)}%)`,
+                      }}
+                    >
+                      <div
+                        className="absolute text-white font-bold text-sm"
+                        style={{
+                          top: "20%",
+                          left: "50%",
+                          transform: "translate(-50%, -50%)",
+                        }}
+                      >
+                        R${value}
+                      </div>
+                    </div>
+                  ))}
+                </motion.div>
+
+                {/* Pointer */}
+                <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-2">
+                  <div className="w-0 h-0 border-l-4 border-r-4 border-b-8 border-l-transparent border-r-transparent border-b-[#C6FF00]"></div>
+                </div>
+              </div>
+
+              {/* Result */}
+              {rouletteResult && (
+                <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="mb-6">
+                  <div className="bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] text-black font-bold text-2xl py-3 px-6 rounded-full">
+                    🎉 Você ganhou R${rouletteResult},00!
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Spin Button */}
+              {!rouletteSpinning && !rouletteResult && (
+                <Button
+                  onClick={handleRouletteSpin}
+                  className="bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] text-black font-bold py-3 px-8 rounded-full hover:scale-105 transition-transform w-full"
+                >
+                  <Sparkles className="w-5 h-5 mr-2" />
+                  Girar Roleta
+                </Button>
+              )}
+
+              {/* Spinning indicator */}
+              {rouletteSpinning && <div className="text-[#C6FF00] font-bold text-lg animate-pulse">🎰 Girando...</div>}
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    )
   }
 
   if (showBonus) {
@@ -640,38 +1240,45 @@ export default function Component() {
                 <CheckCircle className="w-16 h-16 md:w-20 md:h-20 text-[#C6FF00] mx-auto mb-3" />
               </motion.div>
               <h2 className="text-2xl md:text-3xl font-bold text-[#C6FF00]">DESBLOQUEADO!</h2>
+              <p className="text-lg text-[#00FFB2] mt-2">🔓 Oferta VIP Liberada</p>
             </div>
 
             <div className="bg-black rounded-lg p-5 mb-6 border border-gray-800">
               <h3 className="text-xl md:text-2xl font-bold mb-3">Guia Renda em 72 Horas</h3>
 
+              <div className="mb-4">
+                <p className="text-[#C6FF00] font-bold text-lg mb-2">
+                  🎉 Parabéns! Com seu esforço, você acumulou {formatCurrency(balance)} de saldo.
+                </p>
+                <p className="text-gray-300 text-sm mb-3">
+                  Isso te garante um super desconto no nosso Guia Renda em 72 Horas.
+                </p>
+              </div>
+
               <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-4">
                 <div>
                   <p className="text-gray-400 line-through text-lg">De {formatCurrency(PRODUCT_PRICE)}</p>
-                  <p className="text-2xl md:text-3xl font-bold text-[#00FFB2]">Por {formatCurrency(finalPrice)}</p>
+                  <p className="text-2xl md:text-3xl font-bold text-[#00FFB2]">
+                    Por apenas {formatCurrency(finalPrice)}
+                  </p>
                 </div>
                 <div className="mt-2 md:mt-0 bg-[#C6FF00]/20 px-3 py-1 rounded-full border border-[#C6FF00]/50">
-                  <p className="text-[#C6FF00] font-bold text-sm md:text-base">Economia de {formatCurrency(balance)}</p>
+                  <p className="text-[#C6FF00] font-bold text-sm md:text-base">Desconto de {formatCurrency(balance)}</p>
                 </div>
               </div>
-
-              <p className="text-gray-300 text-sm md:text-base mb-5">
-                Você acumulou {formatCurrency(balance)} de saldo e garantiu esse desconto especial. Agora é só garantir
-                seu acesso para receber o guia completo + seu bônus exclusivo.
-              </p>
 
               <div className="space-y-3 mb-5">
                 <div className="flex items-start gap-3">
                   <div className="bg-[#C6FF00] rounded-full p-1 flex-shrink-0 mt-0.5">
                     <Check className="w-3 h-3 text-black" />
                   </div>
-                  <p className="text-white text-sm">Guia prático para fazer sua 1ª venda em até 72 horas</p>
+                  <p className="text-white text-sm">Guia completo para fazer sua 1ª venda em até 72 horas</p>
                 </div>
                 <div className="flex items-start gap-3">
                   <div className="bg-[#C6FF00] rounded-full p-1 flex-shrink-0 mt-0.5">
                     <Check className="w-3 h-3 text-black" />
                   </div>
-                  <p className="text-white text-sm">Bônus secreto exclusivo (acesso liberado apenas após a compra)</p>
+                  <p className="text-white text-sm">Bônus secreto gratuito (liberado após a compra)</p>
                 </div>
               </div>
             </div>
@@ -711,6 +1318,32 @@ export default function Component() {
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col relative">
+      {/* Confetti Effect */}
+      {showConfetti && (
+        <div className="fixed inset-0 pointer-events-none z-50">
+          {[...Array(50)].map((_, i) => (
+            <motion.div
+              key={i}
+              className="absolute w-2 h-2 bg-gradient-to-r from-[#C6FF00] to-[#00FFB2] rounded-full"
+              initial={{
+                x: Math.random() * window.innerWidth,
+                y: -10,
+                rotate: 0,
+              }}
+              animate={{
+                y: window.innerHeight + 10,
+                rotate: 360,
+              }}
+              transition={{
+                duration: 3,
+                delay: Math.random() * 2,
+                ease: "easeOut",
+              }}
+            />
+          ))}
+        </div>
+      )}
+
       {/* Notifications */}
       <AnimatePresence>
         {notifications.map((notification) => (
